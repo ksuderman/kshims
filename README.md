@@ -47,7 +47,7 @@ The `kshim init` command will also create an alias `alias k=kshim` for you.  You
     Sets the global kubeconfig by symlinking ~/.kube/config
     to ~/.kube/configs/*name*
 - **init**<br/>
-    Prints the statements needed to intialize the kshim system.
+    Prints the statements needed to intialize the kshim system.<br/>
     `$> kshim init >> ~/.bash_profile`
 - **install** [-m|--move] *name* [/path/to/kube/config]<br/>
     Copies the kubeconfig (~/.kube/config) to ~/.kube/configs/*name*
@@ -62,7 +62,8 @@ The `kshim init` command will also create an alias `alias k=kshim` for you.  You
     ~/.kube/configs/*name*.  When running kubectl through the shim (recommended)
     the local .kubeconfig kubeconfig will be used.
 - **login** [*namespace*] *container*<br/>
-    Uses kubectl exec to open a Bash shell in the given pod/container. Only enough of the container ID to be unique is needed.
+    Uses kubectl exec to open a Bash shell in the given pod/container. Only enough of the container ID to be unique is needed.<br/>
+    `$> k login my-namespace my-pod`<br/>
     `$> k login job`
 - **namespace**<br/>
     Sets the default namespace for the current kubectl context
