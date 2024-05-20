@@ -20,6 +20,7 @@ $BIN/kshim link kubectl
 $BIN/kshim link helm
 $BIN/kshim init >> ~/.bash_profile
 export PATH=$BIN:$PATH
+alias k=kshim
 
 echo "kshim has been installed and shims for kubectl and helm have been created."
 kubectl confess
