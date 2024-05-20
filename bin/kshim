@@ -1,0 +1,341 @@
+#!/usr/bin/env bash
+set -e
+
+# Command used to manage the local (per directory) and global kubeconfig
+# files.  Run `kshim help` for usage instructions.
+
+# To install place this script on your $PATH and then run
+#     kshim init >> ~/.bash_profile
+#
+# Then restart your shell
+
+KUBE=$HOME/.kube
+CONFIG=$KUBE/config
+LINK=.kubeconfig
+
+# Change this if you would like to store the kubeconfig files in a 
+# different location.
+CONFIGS=$KUBE/configs
+
+# Get the base script name for the help messages.
+NAME=$(basename $0)
+
+# ANSI color codes for the help messages
+reset="\033[0m"
+bold="\033[1m"
+ital="\033[3m" # does not work on OS X
+
+# Function used to highlight text.
+function hi() {
+    echo -e "$bold$@$reset"
+}
+
+function usage() {
+	cat | less -RX << EOF	
+    $(hi NAME)
+        $NAME
+		
+    $(hi DESCRIPTION)
+        Wrapper for $(hi kubectl) that allows per directory kubeconfig files
+        to be used.
+		
+    $(hi SYNOPSIS) 
+        $NAME COMMAND <kubeconfig>	
+        $NAME [kubectl commands]
+        
+    $(hi COMMANDS)
+        $(hi cat) <kubeconfig>
+            Display the contents of the kubeconfig file
+        $(hi clear)
+            Removes the ~/.kube/config symlink
+        $(hi global) <name>
+            Sets the global kubeconfig by symlinking ~/.kube/config
+            to ~/.kube/configs/<name>
+        $(hi init)
+            Prints the statements needed to initialize the kshim system.
+            \$> $NAME init >> ~/.bash_profile
+        $(hi install) [-m|--move] <name> [/path/to/kube/config]
+            Copies the kubeconfig to ~/.kube/configs/<name>
+            Use the $(hi --move) option to remove the original kubeconfig, otherwise a
+            copy is made in $(hi ~/.kube/configs/). If the `/path/to/kube/config` is not provided
+            then `~/.kube/config` is installed.
+        $(hi link) <name>
+            Creates a new shim for <name>
+        $(hi ls)|$(hi list)
+           List available contexts
+        $(hi local) <name>
+            Creates the $LINK symlink in the current directory that points to
+            ~/.kube/configs/<name>.  When running $(hi kubectl) through the shim (recommended)
+            the local $LINK kubeconfig will be used.
+        $(hi login) <namespace> <container ID>
+            Uses $(hi kubectl exec) to open a Bash shell in the given pod/container.
+    	  $(hi namespace) <namespace>
+            Sets the default namespace for the current kubectl context
+        $(hi paste) <name>
+            Pastes the contents of the clipboard to ~/.kube/configs/<name>. (MacOS only)
+        $(hi rm) <kubeconfig>
+            Deletes the kubeconfig file
+      	$(hi unlink) <name>
+            Removes the shim for <name>
+        $(hi help)
+            Prints this help message.
+        	
+        Commands that are not one of the above will be passed directly to
+        the $(hi kubectl) command.
+            	
+    $(hi EXAMPLES)
+    	\$> $NAME link kubectl
+    	\$> $NAME install rke /etc/rancher/rke2/rke2.yml
+    	\$> $NAME cat rke
+    	\$> $NAME local rke
+    	\$> $NAME get pods -n my-namespace
+    	
+Press $(hi Q) to quit $(hi B) to go back
+.
+EOF
+}
+
+if [[ -z $1 ]] ; then
+	usage 
+	exit
+fi
+
+if [[ ! -e $CONFIGS ]] ; then
+	mkdir -p $CONFIGS
+fi
+
+case $1 in
+	ls|list)
+		echo "Available contexts"
+		ls -l $CONFIGS
+		echo
+		if [[ -L $CONFIG ]] ; then
+			ECHO=echo
+			echo "Linked Global config: $(readlink $CONFIG)"
+		elif [[ -e $CONFIG ]] ; then
+			ECHO=echo
+			echo "A global configuration file exists: $CONFIG"
+		fi
+		if [[ -L $LINK ]] ; then
+			ECHO=echo
+			echo "Local context: $(readlink $LINK)"
+		fi
+		$ECHO
+		;;
+	cat)
+		if [[ -z $2 ]] ; then
+			#echo "USAGE: $NAME cat <context>"
+			#exit 1
+			cat $CONFIG
+		elif [[ -e $CONFIGS/$2 ]]; then
+			cat $CONFIGS/$2
+		else
+			echo "No such configuration $CONFIGS/$2"
+			exit 1
+		fi			
+		;;
+	rm)
+		if [[ -z $2 ]] ; then
+			echo "USAGE: $NAME rm <context>"
+			exit 1
+		fi
+		while [[ -n $2 ]] ; do
+			if [[ -e $CONFIGS/$2 ]]; then
+				rm $CONFIGS/$2
+				echo "Removed context $CONFIGS/$2"
+			else
+				echo "No such configuration $CONFIGS/$2"
+				exit 1
+			fi
+			shift
+		done			
+		;;
+	global)
+		if [[ -z $2 ]] ; then
+			echo "USAGE: $NAME global <context>"
+			exit 1
+		fi
+		if [[ -e $CONFIGS/$2 ]]; then
+			if [[ -e $CONFIG ]] ; then
+				rm $CONFIG
+			fi
+			ln -s $CONFIGS/$2 $CONFIG
+			chmod 600 $CONFIG
+			echo "Global context set to $CONFIGS/$2"
+		else
+			echo "No such configuration $CONFIGS/$2"
+			exit 1
+		fi	
+		;;	
+	clear)
+		if [[ ! -e $CONFIG ]] ; then
+			echo "No $CONFIG file found"
+			#ls -alh $CONFIG
+			#ls -alh $KUBE
+			#ls -alh $HOME/.kube
+			exit 1
+		fi	
+		if [[ $2 == '-f' ]] || [[ $2 == '--force' ]] ; then
+			rm $CONFIG
+			echo "Removed $CONFIG"
+			exit
+		fi
+		if [[ ! -L $CONFIG ]] ; then
+			echo "$CONFIG is not a symlink, not removing"
+			exit 1
+		fi
+		rm $CONFIG
+		echo "Removed $CONFIG"
+		;;
+	paste)
+		if [[ $(uname -s) != 'Darwin' ]] ; then
+			echo "This functionality is only available on MacOS"
+			exit 1
+		fi
+		if [[ -z $2 ]] ; then
+			echo "ERROR: Invalid parameters"
+			echo "USAGE: $NAME paste <kubeconfig>"
+			exit 1
+		fi
+		if [[ -e $CONFIGS/$2 ]] ; then
+			echo "ERROR: A kubeconfig with that name already exists."
+			echo "Run: '$NAME rm $2' before installing another kubeconfig with the same name.'"
+			exit 1
+		fi
+		pbpaste > $CONFIGS/$2
+		chmod 600 $CONFIGS/$2
+		echo "Installed $CONFIGS/$2"		
+		;;
+	install)
+		command=cp
+		if [[ $2 = "-m" || $2 = "--move" ]] ; then
+			command=mv
+			shift
+		fi
+		if [[ -z $2 ]] ; then
+			echo "ERROR: Invalid parameters"
+			echo "USAGE: $NAME $1 <name> /path/to/kube/config"
+			exit 1
+		fi
+		if [[ -z $3 ]] ; then
+			if [[ ! -e $CONFIG ]] ; then
+				echo "No kubeconfig provided and $CONFIG does not exist"
+				exit 1
+			fi
+			if [[ -L $CONFIG ]] ; then
+				echo "ERROR: $CONFIG is already a symbolic link. Refusing to install."
+				exit 1
+			fi
+			if [[ -e $CONFIGS/$2 ]] ; then
+				echo "ERROR: There is already a local config named $2. Refusing to install"
+				exit 1
+			fi
+			mv $CONFIG $CONFIGS/$2
+			echo "Renamed $CONFIG to $CONFIGS/$2"
+			exit 0
+		fi
+		if [[ ! -e $3 ]] ; then
+			echo "The kubeconfig file $3 was not found."
+			exit 1
+		fi
+		if [[ -e $CONFIGS/$2 ]] ; then
+			echo "ERROR: A kube config with that name already exists."
+			echo "Please run '$NAME rm $2' before installing this config."
+			exit
+		fi
+		$command $3 $CONFIGS/$2
+		chmod 600 $CONFIGS/$2
+		echo "Installed $3 as $2"
+		;;
+	local)
+		if [[ $2 = -f || $2 = --force ]] ; then
+			shift
+			DELETE=yes
+		fi
+		if [[ -z $2 ]] ; then
+			echo "ERROR: Invalid parameters"
+			echo "USAGE: $NAME local [-f|--force] <name>"
+			exit 1
+		fi
+		if [[ ! -e $CONFIGS/$2 ]] ; then
+			echo "ERROR: No such configuration: $2"
+			exit 1
+		fi
+		if [[ -L $LINK ]] ; then
+			if [[ $DELETE = yes ]] ; then
+				rm $LINK
+			else
+				echo "There is already a local context defined.  Use the --force argument to replace it."
+				exit 1
+			fi
+		fi
+		ln -s $CONFIGS/$2 $LINK
+		echo "Created local context for $CONFIGS/$2"
+		;;
+	link)
+		if [[ -z $2 ]] ; then
+			echo "ERROR: No program name specified specified"
+			exit 1
+		fi
+		dir=$(dirname $(realpath $0))
+		if [[ -e $dir/$2 ]] ; then
+			echo "ERROR: That shim already exists"
+			exit 1
+		fi
+		ln -s $dir/shim $dir/$2
+		echo "Open a new shell or run the command $(hi hash -r $2) to use the new shim."
+		;;
+	unlink)
+		if [[ -z $2 ]] ; then
+			echo "ERROR: No shim specified"
+			exit 1
+		fi
+		dir=$(dirname $(realpath $0))
+		if [[ ! -e $dir/$2 ]] ; then
+			echo "ERROR: No such shim"
+			exit 1
+		fi
+		rm $dir/$2
+		echo "Open a new shell or run the command $(hi hash -r $2) to eliminate the old shim from your \$PATH."
+		;;
+	login)
+		if [[ $# = 3 ]] ; then
+			pod=$(kubectl get pods -n $2 | grep $3 | awk '{print $1}')
+			kubectl exec -itn $2 $pod -- bash		
+		elif [[ $# = 2 ]] ; then
+			pod=$(kubectl get pods | grep $2 | awk '{print $1}')
+			kubectl exec -it $pod -- bash		
+		else
+			echo "ERROR: Invalid parameters. No pod ID was provided."
+			echo "USAGE: $NAME $1 [<namespace>] <pod-id>"
+			echo "       $NAME $1 galaxy galaxy-job-0-5d4f747457-szgxw"
+		fi
+		;;
+	init)
+		dir=$(dirname $(realpath $0))
+		cat <<EOF
+		
+# Add the kshim directory to the start of the PATH
+export SHIMS=$dir
+export PATH=\$SHIMS:\$PATH
+alias k=kshim
+EOF
+		;;
+	ns|namespace)
+		if [[ -z $2 ]] ; then
+			echo "ERROR: No namespace provided"
+			echo "USAGE"
+			echo "   $NAME $1 <namespace>"
+			exit
+		fi
+		kubectl config set-context --current --namespace=$2
+		echo "Set default namespace to $2"
+		;;
+	help)
+		usage 
+		;;
+	*)
+	    # Pass unrecognized commands directly to the kubectl program.
+		kubectl $@
+		;;
+esac

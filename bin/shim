@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# A "shim" that sets the KUBECONFIG variable for the command being
+# executed.
+
+command=$(basename $0)
+SHIMS=$(dirname $(realpath $0))
+
+# Remove ourselves from the PATH so the real command can be found.
+export PATH=$(echo $PATH | sed "s|$SHIMS:||g")
+
+if [[ -n $1 && ($1 == "confess" || $1 == "reveal") ]] ; then
+	echo "This is the kshim wrapper for $(which $command)"
+elif [[ -L .kubeconfig ]] ; then
+	KUBECONFIG=$(readlink .kubeconfig) $command $@
+else
+	$command $@
+fi
