@@ -6,7 +6,11 @@ A *shim* is a small library that transparently intercepts API calls and changes 
 
 ## Installation
 
-TBD
+Do one of hte following:
+
+1. Download and run the `install.sh` script. Edit if necessary.
+2. `curl -s https://raw.githubusercontent.com/ksuderman/kshims/master/install.sh | bash`
+3. Follow the manual installation instructions below.
 
 ## Manual Installation
 
